@@ -1,0 +1,48 @@
+// SPDX-License-Identifier: BSD-3-Clause
+
+/dts-v1/;
+
+#include "sm7475.dtsi"
+
+/ {
+	model = "realme GT Neo5 SE";
+	compatible = "realme,gt-neo5-se", "qcom,sm7475";
+	chassis-type = "handset";
+	qcom,msm-id = <0x24f 0x10000>;
+	qcom,board-id = <0x10008 0>;
+
+	aliases {
+		serial0 = &uart7;
+	};
+
+	chosen {
+		stdout-path = "serial0:115200n8";
+	};
+};
+
+&qupv3_0 {
+	status = "okay";
+};
+
+&uart7 {
+	pinctrl-0 = <&uart7_default>;
+	pinctrl-1 = <&uart7_sleep>;
+	pinctrl-names = "default", "sleep";
+	status = "okay";
+};
+
+&tlmm {
+	uart7_default: uart7-default-state {
+		pins = "gpio26", "gpio27";
+		function = "qup7";
+		drive-strength = <2>;
+		bias-disable;
+	};
+
+	uart7_sleep: uart7-sleep-state {
+		pins = "gpio26", "gpio27";
+		function = "gpio";
+		drive-strength = <2>;
+		bias-pull-down;
+	};
+};
