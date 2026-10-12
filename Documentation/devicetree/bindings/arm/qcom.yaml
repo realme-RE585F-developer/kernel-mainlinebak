@@ -1058,6 +1058,11 @@ properties:
 
       - items:
           - enum:
+              - realme,gt-neo5-se
+          - const: qcom,sm7475
+
+      - items:
+          - enum:
               - microsoft,surface-duo
               - qcom,sm8150-hdk
               - qcom,sm8150-mtp
@@ -1273,8 +1278,7 @@ properties:
       The property is deprecated.
 
 allOf:
-  # Explicit allow-list for older SoCs. The legacy properties are not allowed
-  # on newer SoCs.
+  # Explicit allow-list for SoCs with bootloaders requiring these IDs.
   - if:
       properties:
         compatible:
@@ -1308,6 +1312,7 @@ allOf:
               - qcom,sm7225
               - qcom,sm8150
               - qcom,sm8250
+              - qcom,sm7475
     then:
       properties:
         qcom,board-id: true
