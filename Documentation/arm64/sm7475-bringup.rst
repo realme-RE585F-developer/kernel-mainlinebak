@@ -7,42 +7,40 @@ Merge it with arm64 defconfig or the previously built configuration and run
 olddefconfig before building Image and the board DTB. Build from a source
 path without spaces; Kbuild does not support spaces in the source path.
 
-Android boot header v4 stores the DTB in ``vendor_boot``, after the vendor
-ramdisk and before the vendor ramdisk table and bootconfig. To test the
-mainline board DTB, replace that field in a copy of ``vendor_boot`` while
-preserving the vendor ramdisk, table, bootconfig, DTB load address, and
-partition padding. ``tools/boot/build_vendor_boot_dtb.py`` performs this
-operation and refuses layouts it cannot verify. The output is unsigned:
-the input AVB footer is discarded because it cannot authenticate the new DTB.
-Replacing ``boot`` alone does not select the mainline DTB in the standard v4
-layout. Appended-DTB support in the stock bootloader has not been established.
+The current test keeps the official ``vendor_boot`` and puts the mainline
+DTB in the standard Android boot header v2 DTB section of ``boot.img``.
+``tools/boot/build_boot_dtb.py`` extracts the kernel and ramdisk from the v4
+test boot image, then uses AOSP ``mkbootimg.py`` to write the v2 header,
+kernel, ramdisk, and DTB sections. It does not read or modify ``vendor_boot``.
+The output is unsigned and has no AVB footer.
 
-For example, after building
-``arch/arm64/boot/dts/qcom/sm7475-realme-gt-neo5-se.dtb``:
+After building the board DTB, run:
 
 .. code-block:: sh
 
-   python3 tools/boot/build_vendor_boot_dtb.py \
-     --input vendor_boot_a.img \
+   python3 tools/boot/build_boot_dtb.py \
+     --base-boot boot-mainline-screen-diagnostic.img \
      --dtb arch/arm64/boot/dts/qcom/sm7475-realme-gt-neo5-se.dtb \
-     --output vendor_boot-mainline.img
+     --mkbootimg /path/to/mkbootimg.py \
+     --output boot-mainline-dtb.img
 
-``fastboot boot`` cannot temporarily load this vendor_boot image. Testing
-requires installing it into the intended vendor_boot slot, with a backup and
-a matching mainline boot image. Before doing so, establish how the bootloader
-selects and applies the installed DTBO: stock overlays cannot be assumed
-compatible with the mainline DTB. This script does not modify DTBO or flash
-the device.
+Keep the official ``vendor_boot`` and ``dtbo`` unchanged. Temporarily load
+``boot-mainline-dtb.img`` using ``fastboot boot``. The standard v2 DTB section
+is separate from the kernel payload. Android boot v3/v4 has no equivalent
+boot DTB field; stock bootloader support for v2 still requires verification.
 
-A v4 boot image with an appended DTB and a v2 boot image with a standard DTB
-field are diagnostic experiments only; they are not the normal layout for
-this phone.
+The default base is zero and the kernel, ramdisk, tags and DTB offsets are
+0x8000, 0x1000000, 0x100 and 0x1f00000 respectively. These reproduce the
+previous v2 experiment; they came from stock header metadata and are not
+validated physical load addresses. Override them using the script's address
+options only when bootloader evidence establishes the required values.
 
-An appended-DTB v4 test was reported to restart, while the v2 test stayed at
-the splash screen. Neither result establishes which DTB was passed to Linux,
-whether Linux started, or which component caused the failure. Obtain UART
-logs or inspect the active device tree after reaching a shell before drawing
-conclusions about bootloader format support.
+An appended-DTB v4 test was reported to restart, while the previous v2 test
+stayed at the splash screen. Rebuilding the same v2 payload and addresses
+reproduces that image and does not fix its boot failure. Neither result
+establishes which DTB was passed to Linux, whether Linux started, or which
+component caused the failure. Obtain UART logs or inspect the active device
+tree after reaching a shell before drawing conclusions.
 
 The stock UART compatible is ``qcom,msm-geni-console``; the mainline GENI
 console driver matches ``qcom,geni-debug-uart``. Building the console driver
