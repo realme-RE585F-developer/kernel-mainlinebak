@@ -56,6 +56,38 @@ that the stock bootloader honors the addresses, selects the boot DTB or
 boots the mainline kernel. UART logs or a running shell are still needed
 to confirm the handoff and identify any remaining failure.
 
+Device tests and slot recovery
+------------------------------
+
+The corrected v2 load-address image was temporarily loaded with
+``fastboot boot``. Fastboot returned ``Booting OKAY``, but the screen stayed
+at the OEM logo and the device subsequently responded to fastboot queries.
+This does not establish kernel entry or DTB selection.
+
+A subsequent v2 control using the backup stock kernel and ramdisk with the
+same mainline DTB disconnected from fastboot and was reported to black-screen
+or restart. The device then failed to start its installed Android system.
+Both slots were reported ``slot-unbootable: yes``; before testing, slot A
+had been bootable. No partition was flashed in these tests. A normal
+``fastboot reboot`` alone did not recover the system.
+
+Recovery used the originally active slot A:
+
+.. code-block:: sh
+
+   fastboot getvar current-slot
+   fastboot getvar slot-unbootable:a
+   fastboot set_active a
+   fastboot getvar slot-unbootable:a
+   fastboot reboot
+
+``set_active a`` cleared A's unbootable flag and reset its retry count to 7.
+Android then reconnected over ADB; ``sys.boot_completed=1``, slot ``_a`` and
+the original 5.10.236 kernel confirmed recovery. The official vendor_boot
+and DTBO were not flashed. The stock-kernel control must not be presented
+as a known-good boot test. Additional tests require understanding this
+bootloader's slot-state changes and obtaining evidence of the kernel handoff.
+
 The stock UART compatible is ``qcom,msm-geni-console``; the mainline GENI
 console driver matches ``qcom,geni-debug-uart``. Building the console driver
 in does not make these bindings interchangeable. The board DTS exposes the
