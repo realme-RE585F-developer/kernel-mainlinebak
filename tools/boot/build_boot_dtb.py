@@ -4,8 +4,8 @@
 
 Extract kernel and ramdisk from a v4 boot image and use AOSP mkbootimg to
 produce boot.img. No vendor_boot input or output is used. Output is unsigned.
-Load addresses are configurable; defaults match the previous SM7475 v2 test
-and do not establish bootloader compatibility.
+Load addresses are configurable and checked against the supplied DTB's RAM
+and reserved-memory ranges. Bootloader compatibility still needs device tests.
 """
 
 import argparse
@@ -29,6 +29,62 @@ def digest(data):
     return hashlib.sha256(data).hexdigest()
 
 
+def memory_map(dtb):
+    """Read the two-cell RAM/reservation layout using dtc's fdtget."""
+    def prop(node, name):
+        result = subprocess.run(['fdtget', '-t', 'x', str(dtb), node, name],
+                                capture_output=True, text=True)
+        if result.returncode:
+            return []
+        return [int(value, 16) for value in result.stdout.split()]
+
+    def children(node):
+        return subprocess.run(['fdtget', '-l', str(dtb), node], check=True,
+                              capture_output=True, text=True).stdout.split()
+
+    def ranges(node):
+        cells = prop(node, 'reg')
+        if len(cells) % 4:
+            raise ValueError(f'unsupported reg layout at {node}')
+        return [(cells[i] * 2**32 + cells[i + 1],
+                 cells[i + 2] * 2**32 + cells[i + 3])
+                for i in range(0, len(cells), 4) if cells[i + 2] or cells[i + 3]]
+
+    if prop('/', '#address-cells') != [2] or prop('/', '#size-cells') != [2]:
+        raise ValueError('expected two-cell root memory addresses and sizes')
+    ram = [region for node in children('/') if node.split('@')[0] == 'memory'
+           for region in ranges('/' + node)]
+    if not ram:
+        raise ValueError('DTB has no usable RAM ranges for load-address validation')
+    root_children = children('/')
+    reserved = []
+    if 'reserved-memory' in root_children:
+        if (prop('/reserved-memory', '#address-cells') != [2]
+                or prop('/reserved-memory', '#size-cells') != [2]):
+            raise ValueError('expected two-cell reserved-memory layout')
+        reserved = [region for node in children('/reserved-memory')
+                    for region in ranges('/reserved-memory/' + node)]
+    return ram, reserved
+
+
+def validate_loads(addresses, sizes, ram, reserved):
+    regions = [(name, addresses[name], sizes[name]) for name in sizes]
+    for name, start, size in regions:
+        end = start + size
+        if not any(base <= start and end <= base + length for base, length in ram):
+            raise ValueError(f'{name} load range {start:#x}..{end:#x} is outside RAM')
+        if any(start < base + length and base < end for base, length in reserved):
+            raise ValueError(f'{name} load range overlaps reserved memory')
+    for index, (name, start, size) in enumerate(regions):
+        for other, other_start, other_size in regions[index + 1:]:
+            if start < other_start + other_size and other_start < start + size:
+                raise ValueError(f'{name} and {other} load ranges overlap')
+    if addresses['kernel'] % (2 * 1024 * 1024):
+        raise ValueError('kernel load address must be 2 MiB aligned for this Image')
+    if addresses['dtb'] % 8:
+        raise ValueError('DTB load address must be 8-byte aligned')
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--base-boot', type=Path, required=True,
@@ -37,11 +93,12 @@ def main():
     parser.add_argument('--mkbootimg', type=Path, required=True,
                         help='AOSP mkbootimg.py')
     parser.add_argument('--output', type=Path, required=True)
-    parser.add_argument('--base', type=lambda v: int(v, 0), default=0)
-    parser.add_argument('--kernel-offset', type=lambda v: int(v, 0), default=0x8000)
-    parser.add_argument('--ramdisk-offset', type=lambda v: int(v, 0), default=0x1000000)
-    parser.add_argument('--tags-offset', type=lambda v: int(v, 0), default=0x100)
-    parser.add_argument('--dtb-offset', type=lambda v: int(v, 0), default=0x1f00000)
+    parser.add_argument('--base', type=lambda v: int(v, 0), default=0x80000000)
+    parser.add_argument('--kernel-offset', type=lambda v: int(v, 0), default=0x28000000)
+    parser.add_argument('--ramdisk-offset', type=lambda v: int(v, 0), default=0x40000000)
+    parser.add_argument('--tags-offset', type=lambda v: int(v, 0), default=0x2f000000)
+    parser.add_argument('--dtb-offset', type=lambda v: int(v, 0), default=0x2f000000)
+    parser.add_argument('--cmdline', help='override base boot command line')
     args = parser.parse_args()
     inputs = (args.base_boot, args.dtb, args.mkbootimg)
     outputs = (args.output, Path(str(args.output) + '.json'),
@@ -67,7 +124,8 @@ def main():
     dtb = args.dtb.read_bytes()
     if len(dtb) < 40 or struct.unpack_from('>II', dtb) != (0xd00dfeed, len(dtb)):
         parser.error('expected one complete DTB with a valid FDT header')
-    cmdline = boot[44:1580].split(b'\0')[0].decode()
+    cmdline = (args.cmdline if args.cmdline is not None
+               else boot[44:1580].split(b'\0')[0].decode())
     os_version = os_value >> 11
     os_version = f'{os_version >> 14}.{(os_version >> 7) & 127}.{os_version & 127}'
     patch = os_value & 2047
@@ -82,6 +140,13 @@ def main():
         parser.error('kernel, ramdisk and tags addresses must fit in 32 bits')
     if not 0 <= addresses['dtb'] < 2**64:
         parser.error('DTB address must fit in 64 bits')
+    kernel_runtime_size = max(len(kernel), struct.unpack_from('<Q', kernel, 16)[0])
+    sizes = {'kernel': kernel_runtime_size, 'ramdisk': len(ramdisk), 'dtb': len(dtb)}
+    try:
+        ram, reserved = memory_map(args.dtb)
+        validate_loads(addresses, sizes, ram, reserved)
+    except ValueError as error:
+        parser.error(str(error))
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='boot-dtb-v2-') as temporary:
@@ -132,6 +197,7 @@ def main():
         'dtb_sha256': digest(dtb), 'cmdline': cmdline,
         'dtb_file_offset': dtb_file_offset, 'dtb_size': len(dtb),
         'load_addresses': addresses, 'image_bytes': len(result),
+        'load_sizes': sizes, 'dtb_ram_ranges': ram,
         'image_sha256': digest(result),
         'validation': 'Header and payload checks passed; bootability unverified.',
         'signing': 'Unsigned; no AVB footer.',

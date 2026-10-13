@@ -29,18 +29,32 @@ Keep the official ``vendor_boot`` and ``dtbo`` unchanged. Temporarily load
 is separate from the kernel payload. Android boot v3/v4 has no equivalent
 boot DTB field; stock bootloader support for v2 still requires verification.
 
-The default base is zero and the kernel, ramdisk, tags and DTB offsets are
-0x8000, 0x1000000, 0x100 and 0x1f00000 respectively. These reproduce the
-previous v2 experiment; they came from stock header metadata and are not
-validated physical load addresses. Override them using the script's address
-options only when bootloader evidence establishes the required values.
+The old v2 header used 0x8000, 0x1000000 and 0x1f00000 as absolute kernel,
+ramdisk and DTB addresses. They are below the device's RAM start and also
+place ramdisk and DTB inside the kernel's runtime extent. Merely adding a
+RAM base would retain these overlaps. The new defaults place kernel at
+0xa8000000, ramdisk at 0xc0000000 and DTB/tags at 0xaf000000. They lie in the
+first RAM bank and outside the fixed reserved-memory regions in the board
+DTB. The tool checks RAM containment, reserved regions, alignment and
+pairwise overlap using the Image header's runtime size, including BSS.
+It requires ``fdtget`` from the dtc package for these checks.
 
-An appended-DTB v4 test was reported to restart, while the previous v2 test
-stayed at the splash screen. Rebuilding the same v2 payload and addresses
-reproduces that image and does not fix its boot failure. Neither result
-establishes which DTB was passed to Linux, whether Linux started, or which
-component caused the failure. Obtain UART logs or inspect the active device
-tree after reaching a shell before drawing conclusions.
+The board DTS provides the first RAM bank (0x80000000, size 0x6a000000)
+as a fallback, taken from the installed device's exported tree. The
+bootloader may replace it with the full RAM banks. The framebuffer console
+is selected with ``console=tty0`` in addition to the UART console. For a
+verbose comparison, pass the following ``--cmdline`` value when packaging:
+
+.. code-block:: text
+
+   earlycon=qcom_geni,0x0099c000 console=tty0 console=ttyMSM0,115200n8 panic=0 loglevel=8 ignore_loglevel initcall_debug printk.time=1 fbcon=map:0
+
+The original appended-DTB v4 test was reported to restart, while the old v2
+test stayed at the splash screen during temporary ``fastboot boot``. The
+new address layout fixes identifiable header defects; it does not establish
+that the stock bootloader honors the addresses, selects the boot DTB or
+boots the mainline kernel. UART logs or a running shell are still needed
+to confirm the handoff and identify any remaining failure.
 
 The stock UART compatible is ``qcom,msm-geni-console``; the mainline GENI
 console driver matches ``qcom,geni-debug-uart``. Building the console driver

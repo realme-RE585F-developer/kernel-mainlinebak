@@ -11,6 +11,13 @@
 	qcom,msm-id = <0x24f 0x10000>;
 	qcom,board-id = <0x10008 0>;
 
+	/* Safe first-bank fallback from the installed device's RAM map.
+	 * The bootloader may replace this with the full installed RAM banks.
+	 */
+	memory {
+		reg = <0 0x80000000 0 0x6a000000>;
+	};
+
 	aliases {
 		serial0 = &uart7;
 	};
@@ -19,7 +26,7 @@
 		#address-cells = <2>;
 		#size-cells = <2>;
 		ranges;
-		bootargs = "earlycon=qcom_geni,0x0099c000 console=ttyMSM0,115200n8 loglevel=8 ignore_loglevel";
+		bootargs = "earlycon=qcom_geni,0x0099c000 console=tty0 console=ttyMSM0,115200n8 loglevel=8 ignore_loglevel";
 		stdout-path = "serial0:115200n8";
 
 		/* The bootloader leaves the panel scanout running at this address. */
