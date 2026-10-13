@@ -16,6 +16,7 @@
 	};
 
 	chosen {
+		bootargs = "earlycon=qcom_geni,0x0099c000 console=ttyMSM0,115200n8 loglevel=8 ignore_loglevel";
 		stdout-path = "serial0:115200n8";
 	};
 };
@@ -25,6 +26,7 @@
 };
 
 &uart7 {
+	compatible = "qcom,geni-debug-uart", "qcom,msm-geni-console";
 	pinctrl-0 = <&uart7_default>;
 	pinctrl-1 = <&uart7_sleep>;
 	pinctrl-names = "default", "sleep";
