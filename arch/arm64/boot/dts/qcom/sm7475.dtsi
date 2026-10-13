@@ -210,7 +210,7 @@
 		memory@a6e00000 { reg = <0 0xa6e00000 0 0x40000>; no-map; };
 		memory@a6f00000 { reg = <0 0xa6f00000 0 0x100000>; no-map; };
 		memory@a7605000 { reg = <0 0xa7605000 0 0x8000>; };
-		memory@b8000000 { reg = <0 0xb8000000 0 0x2b00000>; };
+		splash-region@b8000000 { reg = <0 0xb8000000 0 0x2b00000>; no-map; };
 		memory@e0600000 { reg = <0 0xe0600000 0 0x400000>; no-map; };
 		memory@e0a00000 { reg = <0 0xe0a00000 0 0x100000>; no-map; };
 		memory@e55f3000 { reg = <0 0xe55f3000 0 0x9000>; no-map; };
