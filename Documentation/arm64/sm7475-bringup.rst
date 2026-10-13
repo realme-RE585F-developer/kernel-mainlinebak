@@ -39,6 +39,11 @@ DTB. The tool checks RAM containment, reserved regions, alignment and
 pairwise overlap using the Image header's runtime size, including BSS.
 It requires ``fdtget`` from the dtc package for these checks.
 
+These are checks on header addresses, not measurements of ABL's actual
+placement. The Qualcomm reference ABL computes kernel, ramdisk and DTB
+addresses from firmware's kernel allocation and payload sizes. Correcting
+the header alone therefore does not establish the cause of the failure.
+
 The board DTS provides the first RAM bank (0x80000000, size 0x6a000000)
 as a fallback, taken from the installed device's exported tree. The
 bootloader may replace it with the full RAM banks. The framebuffer console
@@ -116,3 +121,63 @@ The stock UFS PHY compatible ``qcom,ufs-phy-qmp-v4-cape`` has no matching
 mainline driver in this tree. Enabling the UFS configuration alone does
 not enable storage on the board. Capturing early logs and validating the
 bootloader's mainline DTB/DTBO selection remain necessary.
+
+Installed ABL and stock DTBO evidence (2026-10-14)
+-------------------------------------------------
+
+Root access to the installed Android exposed ``/proc/bootloader_log`` and
+``/sys/firmware/fdt``. ABL selected stock DTB index 2 and DTBO index 0.
+The SoC ID is 0x24f, revision 0x10000, foundry 0; the board variant is 8,
+major 0x10000, minor/subtype 0. These agree with the mainline board IDs.
+
+The installed ABL contains the branch which skips board overlays only on
+a complete DTB match. Its match mask is 0x1aaaaaaaaa8000e; unlike the
+generic reference version, this includes OPlus project, hardware and
+region matching as well as all sixteen PMIC model matches. Board IDs
+alone do not bypass the stock DTBO. An experimental full-match DTB was
+temporarily booted, but automatically restarted into stock Android; its
+PMIC and OPlus properties have been removed. It is not a working fix.
+The firmware's PMIC arrays have fifteen entries, while the full-match
+mask requires sixteen slots, so extending the table is not a dependable
+way to bypass the installed overlay selection.
+
+The mainline base DTB has none of the 129 external symbols required by
+stock DTBO entry 0. Check reference availability before another test:
+
+.. code-block:: sh
+
+   python3 tools/boot/check_dtbo_refs.py \
+     --dtb sm7475-realme-gt-neo5-se.dtb \
+     --stock-dtbo dtbo_a.img --index 0
+
+This tool only reads the supplied files and reports missing symbols or
+phandles. Entry selection must come from the device's ABL log; the tool
+does not emulate ABL selection. Passing establishes reference availability
+only, not overlay compatibility or bootability. ``fdtoverlay`` reports
+NOTFOUND with the mainline base, but BADVALUE even with the stock base;
+libfdt merge results alone cannot model the vendor's ufdt implementation.
+For comparison, AOSP libufdt (revision
+4f5784f8f46b38bd0e0249c3b1d0ce4b4faf36a8) successfully merged the stock
+base and an experimental mainline base with 129 disabled target nodes.
+The latter preserved mainline model, memory and /soc nodes and produced
+a 1511093-byte DTB. A temporary boot of that experiment still stayed at
+the OEM logo and remained accessible via fastboot. Thus resolving overlay
+references alone does not fix the handoff. Neither experiment is included
+in the board DTS.
+
+``fastboot continue`` after the failed experiment disconnected USB and
+led to black screen/restarts. On re-entering fastboot, slot A was marked
+unbootable. Recovery again used ``set_active a`` followed by ``reboot``;
+do not use ``continue`` as the recovery command for these failed tests.
+
+ABL updates the splash reservation at the literal path
+``/reserved-memory/splash_region``. The mainline DTS now uses that name,
+just as it retains ``/memory``. Both intentionally lack unit addresses
+to accommodate the installed firmware; dtc warns about these names.
+
+Following the full-match experiment, Android reported boot completion,
+slot _a and the original 5.10.236 kernel. Root reads verified that the
+vendor_boot_a and dtbo_a partition hashes were unchanged before and after
+the experiment. No partition was flashed. Pstore had no retained mainline
+log; the current bootloader log describes the subsequent Android boot,
+not the failed temporary handoff. Mainline kernel entry is still unproven.
