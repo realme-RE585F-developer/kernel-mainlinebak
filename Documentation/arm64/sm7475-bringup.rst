@@ -13,10 +13,12 @@ only ``boot.img`` with ``fastboot boot`` leaves the installed ``vendor_boot``
 and DTBO in use and does not test the packaged mainline DTB.
 
 The generated images carry structurally valid AVB hash footers made with the
-local Android test RSA-4096 key. They are not vendor-signed images. A copied
-stock footer cannot be reused after changing the payload because the signed
-digest no longer matches. The bootloader still needs a complete v4 image
-structure, even when the device is unlocked.
+local Android test RSA-4096 key. They are not vendor-signed images. This
+device's top-level ``vbmeta`` chains ``boot`` and ``vendor_boot`` to the
+vendor public key, so an unlocked ABL can still return ``Not Found`` for a
+footer made with another key. A copied stock footer cannot be reused after
+changing the payload because its digest no longer matches. For a diagnostic
+boot, use a vbmeta image with verification disabled.
 
 For local testing, ``tools/boot/build_mainline_images.py`` writes to the
 project-level ``test/`` directory by default. Before publishing a successful
