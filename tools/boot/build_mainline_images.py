@@ -253,6 +253,8 @@ def main():
         "preserved": ["vendor ramdisk", "vendor ramdisk table", "vendor bootconfig", "DTB load address", "dtbo input untouched"],
         "signing": ("base vendor_boot AVB footer preserved; boot footer made with supplied key"
                     if args.preserve_vendor_boot and args.boot_avb_key else
+                    "boot footer made with supplied key; replacement vendor_boot has no AVB footer"
+                    if args.boot_avb_key else
                     "base vendor_boot AVB footer preserved byte-for-byte"
                     if args.preserve_vendor_boot else
                     "unsigned; AVB footer not generated"),
