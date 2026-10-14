@@ -177,7 +177,7 @@ def main():
     )
     parser.add_argument(
         "--preserve-vendor-boot", action="store_true",
-        help="copy the signed base vendor_boot unchanged instead of replacing its DTB",
+        help="copy the base vendor_boot unchanged instead of replacing its DTB",
     )
     parser.add_argument("--avbtool", type=Path,
                         help="avbtool used when --boot-avb-key is supplied")
@@ -236,7 +236,7 @@ def main():
         "cmdline": cmdline,
         "kernel_release": args.kernel_release,
         "dtbo_index_checked": args.dtbo_index,
-        "vendor_boot_mode": "stock-signed" if args.preserve_vendor_boot else "replacement-unsigned",
+        "vendor_boot_mode": "preserved-base" if args.preserve_vendor_boot else "replacement-unsigned",
         "boot_avb_mode": "footer-with-supplied-key" if args.boot_avb_key else "none",
         "partition_bytes": {"boot": len(boot), "vendor_boot": len(vendor)},
         "payload_sha256": {
@@ -251,9 +251,9 @@ def main():
                    "base_boot": str(args.base_boot),
                    "base_vendor_boot": str(args.base_vendor_boot)},
         "preserved": ["vendor ramdisk", "vendor ramdisk table", "vendor bootconfig", "DTB load address", "dtbo input untouched"],
-        "signing": ("stock vendor_boot AVB footer preserved; boot footer made with supplied key"
+        "signing": ("base vendor_boot AVB footer preserved; boot footer made with supplied key"
                     if args.preserve_vendor_boot and args.boot_avb_key else
-                    "stock AVB footer preserved byte-for-byte"
+                    "base vendor_boot AVB footer preserved byte-for-byte"
                     if args.preserve_vendor_boot else
                     "unsigned; AVB footer not generated"),
         "validation": "v4 headers, payload sections, partition sizes and DTB FDT header checked",

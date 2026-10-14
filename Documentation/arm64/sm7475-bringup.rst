@@ -220,11 +220,13 @@ The latter preserved mainline model, memory and /soc nodes and produced
 a 1511093-byte DTB. A temporary boot of that experiment still stayed at
 the OEM logo and remained accessible via fastboot. Thus resolving overlay
 references alone does not fix the handoff. The current fastboot diagnostic
-package preserves the signed stock ``vendor_boot_a.img`` byte-for-byte and
-keeps the complete FDT beside the image for comparison. This isolates kernel
-failures from the AVB failure caused by replacing vendor_boot. A modified
-vendor_boot requires the OEM RSA private key, or a bootloader with verification
-disabled. The diagnostic ``boot.img`` also carries a structurally valid AVB
+package follows the older known-good
+``6.18mainline/vendor_boot_mainline.img`` layout: a 34,128,128-byte vendor
+ramdisk, ``ukee-ramoops.dtb`` and the original v4 table/bootconfig. The
+generic boot ramdisk is an empty cpio, as in the older ``repack.sh`` flow.
+This is the controlled vendor_boot/DTB comparison for the mainline Image;
+the 1.43-MiB stock reference DTB and the 10-KiB hand-written DTB are not used
+in this package. The diagnostic ``boot.img`` carries a structurally valid AVB
 hash footer made with a local test key; an unlocked bootloader may ignore its
 key identity while still requiring the footer to be present.
 
