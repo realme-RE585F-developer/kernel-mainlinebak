@@ -12,6 +12,14 @@ is an unchanged stock copy. The two v4 images form one matched set; testing
 only ``boot.img`` with ``fastboot boot`` leaves the installed ``vendor_boot``
 and DTBO in use and does not test the packaged mainline DTB.
 
+The generated images are unsigned and intentionally have no AVB footer. The
+stock bootloader verifies the ``boot`` and ``vendor_boot`` chain through the
+RSA-4096 descriptors in ``vbmeta``; it will reject these images with
+``Failed to load/authenticate boot image: Load Error``. A copied stock footer
+cannot be reused after changing the payload because the signed digest no
+longer matches. Do not flash or temporarily boot the generated images on a
+production device.
+
 For local testing, ``tools/boot/build_mainline_images.py`` writes to the
 project-level ``test/`` directory by default. Before publishing a successful
 new set it removes the previous ``*.img`` files, image checksums and build
