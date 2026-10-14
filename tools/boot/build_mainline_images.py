@@ -148,7 +148,11 @@ def main():
     parser.add_argument("--ramdisk", type=Path, required=True)
     parser.add_argument("--dtb", type=Path, required=True)
     parser.add_argument("--dtbo", type=Path, required=True)
-    parser.add_argument("--output-dir", type=Path, required=True)
+    project_root = Path(__file__).resolve().parents[3]
+    parser.add_argument(
+        "--output-dir", type=Path, default=project_root / "test",
+        help="output directory (default: project-root/test; prior images there are replaced)",
+    )
     parser.add_argument("--cmdline", default="")
     args = parser.parse_args()
     inputs = [args.mkbootimg, args.base_boot, args.base_vendor_boot,
@@ -163,12 +167,23 @@ def main():
     boot, cmdline = build_boot(args.mkbootimg, boot_base, kernel, ramdisk,
                                args.cmdline, args.output_dir / "boot.img")
     vendor = build_vendor(vendor_base, dtb)
+    args.output_dir.mkdir(parents=True, exist_ok=True)
+    for old_image in args.output_dir.glob("*.img"):
+        old_image.unlink()
+    for old_checksum in args.output_dir.glob("*.img.sha256"):
+        old_checksum.unlink()
+    for old_metadata in ("manifest.json", "payloads.sha256"):
+        (args.output_dir / old_metadata).unlink(missing_ok=True)
     boot_path = args.output_dir / "boot.img"
     vendor_path = args.output_dir / "vendor_boot.img"
     boot = publish(boot, boot_path, len(boot_base))
     vendor = publish(vendor, vendor_path, len(vendor_base))
     dtbo_path = args.output_dir / "dtbo.img"
     shutil.copyfile(args.dtbo, dtbo_path)
+    for source, name in ((args.kernel, "Image"), (args.config, "config"),
+                         (args.ramdisk, "ramdisk.lz4"),
+                         (args.dtb, "sm7475-realme-gt-neo5-se.dtb")):
+        shutil.copyfile(source, args.output_dir / name)
     manifest = {
         "layout": "Android boot header v4; DTB in vendor_boot",
         "cmdline": cmdline,
@@ -191,6 +206,13 @@ def main():
     }
     manifest_path = args.output_dir / "manifest.json"
     manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
+    payloads = (("kernel", "Image"), ("config", "config"),
+                ("dtb", "sm7475-realme-gt-neo5-se.dtb"),
+                ("boot_ramdisk", "ramdisk.lz4"))
+    (args.output_dir / "payloads.sha256").write_text("".join(
+        f"{sha256((args.output_dir / name).read_bytes())}  {name}\n"
+        for _, name in payloads
+    ))
     for path, data in ((boot_path, boot), (vendor_path, vendor), (dtbo_path, dtbo)):
         (path.with_suffix(path.suffix + ".sha256")).write_text(f"{sha256(data)}  {path.name}\n")
     print(json.dumps(manifest, indent=2))

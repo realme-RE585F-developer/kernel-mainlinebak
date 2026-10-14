@@ -12,6 +12,12 @@ is an unchanged stock copy. The two v4 images form one matched set; testing
 only ``boot.img`` with ``fastboot boot`` leaves the installed ``vendor_boot``
 and DTBO in use and does not test the packaged mainline DTB.
 
+For local testing, ``tools/boot/build_mainline_images.py`` writes to the
+project-level ``test/`` directory by default. Before publishing a successful
+new set it removes the previous ``*.img`` files, image checksums and build
+metadata in that directory, then copies the new payload inputs alongside the
+images. It does not clean source files, stock dumps or historical artifacts.
+
 Standard fastboot ``boot`` accepts one boot image and cannot stage a separate
 v4 ``vendor_boot`` image. Therefore a temporary ``fastboot boot boot.img``
 result is inconclusive for this package. Testing the matched pair requires
