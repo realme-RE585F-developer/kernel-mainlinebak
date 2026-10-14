@@ -12,14 +12,13 @@ bootconfig and DTB from the previously working test package. The package's
 set; testing only ``boot.img`` with ``fastboot boot`` leaves the installed
 ``vendor_boot`` and DTBO in use.
 
-The current diagnostic ``boot.img`` is repacked with ``magiskboot`` so its
-stock v4 header and AVB footer remain present while only the kernel and
-generic ramdisk are replaced. ``vendor_boot.img`` is copied byte-for-byte.
-Rebuilding a footer with a local test
-key changes the chained key and can make ABL return ``Not Found`` even on an
-unlocked device. The stock footer's payload digest is retained for this
-unlocked diagnostic path; do not use this method for a locked production
-device.
+The current diagnostic ``boot.img`` is built with AOSP ``mkbootimg.py`` and
+has no AVB footer. This is intentional for ``fastboot boot`` on an unlocked
+device: retaining the stock footer after replacing the kernel leaves the
+signed hash descriptor pointing at the stock payload, which makes ABL return
+``Failed to load/authenticate boot image: Not Found``. ``vendor_boot.img`` is
+copied byte-for-byte from the working test package and retains its stock
+footer. A locally generated footer is not a production signature.
 
 For local testing, ``tools/boot/build_mainline_images.py`` writes to the
 project-level ``test/`` directory by default. Before publishing a successful

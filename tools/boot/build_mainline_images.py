@@ -95,10 +95,9 @@ def build_boot(mkbootimg, base_boot, kernel, ramdisk, cmdline, output):
     _, _, os_value, base_cmdline = stock_boot_layout(base_boot)
     if not cmdline:
         cmdline = base_cmdline
-    if not cmdline:
-        raise ValueError(
-            "base v4 boot.img has no kernel cmdline; pass --cmdline explicitly"
-        )
+    # A v4 boot image may intentionally have an empty cmdline when the
+    # vendor_boot bootconfig supplies it.  Do not invent a command line just
+    # to satisfy the packer; callers can pass --cmdline for diagnostics.
     os_version = os_value >> 11
     os_version = f"{os_version >> 14}.{(os_version >> 7) & 127}.{os_version & 127}"
     patch = os_value & 2047
