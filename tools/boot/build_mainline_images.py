@@ -137,6 +137,12 @@ def publish(data, output, partition_size):
     return data
 
 
+def copy_payload(source, destination):
+    """Copy a payload without failing when the input already is in output-dir."""
+    if source.resolve() != destination.resolve():
+        shutil.copyfile(source, destination)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--mkbootimg", type=Path, required=True)
@@ -148,6 +154,10 @@ def main():
     parser.add_argument("--ramdisk", type=Path, required=True)
     parser.add_argument("--dtb", type=Path, required=True)
     parser.add_argument("--dtbo", type=Path, required=True)
+    parser.add_argument(
+        "--dtbo-index", type=int, default=None,
+        help="check this stock DTBO entry's external references before publishing",
+    )
     project_root = Path(__file__).resolve().parents[3]
     parser.add_argument(
         "--output-dir", type=Path, default=project_root / "test",
@@ -164,6 +174,12 @@ def main():
     ramdisk = args.ramdisk.read_bytes()
     dtb = args.dtb.read_bytes()
     dtbo = args.dtbo.read_bytes()
+    if args.dtbo_index is not None:
+        checker = Path(__file__).with_name("check_dtbo_refs.py")
+        subprocess.run([
+            sys.executable, str(checker), "--dtb", str(args.dtb),
+            "--stock-dtbo", str(args.dtbo), "--index", str(args.dtbo_index),
+        ], check=True)
     boot, cmdline = build_boot(args.mkbootimg, boot_base, kernel, ramdisk,
                                args.cmdline, args.output_dir / "boot.img")
     vendor = build_vendor(vendor_base, dtb)
@@ -183,11 +199,12 @@ def main():
     for source, name in ((args.kernel, "Image"), (args.config, "config"),
                          (args.ramdisk, "ramdisk.lz4"),
                          (args.dtb, "sm7475-realme-gt-neo5-se.dtb")):
-        shutil.copyfile(source, args.output_dir / name)
+        copy_payload(source, args.output_dir / name)
     manifest = {
         "layout": "Android boot header v4; DTB in vendor_boot",
         "cmdline": cmdline,
         "kernel_release": args.kernel_release,
+        "dtbo_index_checked": args.dtbo_index,
         "partition_bytes": {"boot": len(boot), "vendor_boot": len(vendor)},
         "payload_sha256": {
             "kernel": sha256(kernel), "boot_ramdisk": sha256(ramdisk),

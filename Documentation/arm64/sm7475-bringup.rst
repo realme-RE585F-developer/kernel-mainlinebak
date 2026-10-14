@@ -195,13 +195,16 @@ The firmware's PMIC arrays have fifteen entries, while the full-match
 mask requires sixteen slots, so extending the table is not a dependable
 way to bypass the installed overlay selection.
 
-The mainline base DTB has none of the 129 external symbols required by
-stock DTBO entry 0. Check reference availability before another test:
+The earlier 10-KiB mainline base DTB had none of the 129 external symbols
+required by stock DTBO entry 0. That makes the small hand-written tree
+invalid for a stock-DTBO boot test. The captured full FDT in
+``prebulit/fdt`` retains the stock symbols and nodes; check it before
+building a diagnostic image:
 
 .. code-block:: sh
 
    python3 tools/boot/check_dtbo_refs.py \
-     --dtb sm7475-realme-gt-neo5-se.dtb \
+     --dtb prebulit/fdt \
      --stock-dtbo dtbo_a.img --index 0
 
 This tool only reads the supplied files and reports missing symbols or
@@ -216,8 +219,10 @@ base and an experimental mainline base with 129 disabled target nodes.
 The latter preserved mainline model, memory and /soc nodes and produced
 a 1511093-byte DTB. A temporary boot of that experiment still stayed at
 the OEM logo and remained accessible via fastboot. Thus resolving overlay
-references alone does not fix the handoff. Neither experiment is included
-in the board DTS.
+references alone does not fix the handoff. The current diagnostic package
+uses ``prebulit/fdt`` as its vendor_boot DTB and keeps the stock DTBO
+unchanged, so it tests the mainline Image against the complete firmware
+tree. Its manifest records the DTB size and reference-check result.
 
 ``fastboot continue`` after the failed experiment disconnected USB and
 led to black screen/restarts. On re-entering fastboot, slot A was marked
