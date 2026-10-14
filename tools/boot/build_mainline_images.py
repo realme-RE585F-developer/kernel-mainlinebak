@@ -164,9 +164,37 @@ def add_avb_footer(avbtool, image, partition_name, partition_size, key,
         return path.read_bytes()
 
 
+def repack_with_magiskboot(magiskboot, base_image, kernel, ramdisk, dtb,
+                           output, vendor):
+    """Replace payloads while retaining the stock v4 header and AVB footer."""
+    with tempfile.TemporaryDirectory(prefix="mainline-magiskboot-") as temp_name:
+        temp = Path(temp_name)
+        unpack_dir = temp / ("vendor" if vendor else "boot")
+        unpack_dir.mkdir()
+        template = unpack_dir / "template.img"
+        template.write_bytes(base_image)
+        unpack = subprocess.run([
+            str(magiskboot), "unpack", str(template),
+        ], cwd=unpack_dir, capture_output=True, text=True)
+        if unpack.returncode not in (0, 3):
+            raise RuntimeError(unpack.stderr or unpack.stdout)
+        (unpack_dir / ("dtb" if vendor else "kernel")).write_bytes(
+            dtb if vendor else kernel
+        )
+        if not vendor:
+            (unpack_dir / "ramdisk.cpio").write_bytes(ramdisk)
+        packed = temp / output.name
+        subprocess.run([
+            str(magiskboot), "repack", str(template), str(packed),
+        ], cwd=unpack_dir, check=True)
+        result = packed.read_bytes()
+    return result
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--mkbootimg", type=Path, required=True)
+    parser.add_argument("--mkbootimg", type=Path,
+                        help="AOSP mkbootimg.py for a newly constructed v4 boot image")
     parser.add_argument("--base-boot", type=Path, required=True)
     parser.add_argument("--base-vendor-boot", type=Path, required=True)
     parser.add_argument("--kernel", type=Path, required=True)
@@ -193,6 +221,14 @@ def main():
                         help="private key for a test/OEM boot AVB footer")
     parser.add_argument("--vendor-avb-key", type=Path,
                         help="private key for a replacement vendor_boot AVB footer")
+    parser.add_argument(
+        "--magiskboot", type=Path,
+        help="magiskboot used to retain the stock v4 header/footer while replacing payloads",
+    )
+    parser.add_argument(
+        "--preserve-stock-avb", action="store_true",
+        help="repack both images with magiskboot and retain the stock AVB footer/key",
+    )
     parser.add_argument("--boot-avb-algorithm", default="SHA256_RSA4096")
     project_root = Path(__file__).resolve().parents[3]
     parser.add_argument(
@@ -210,28 +246,42 @@ def main():
     ramdisk = args.ramdisk.read_bytes()
     dtb = args.dtb.read_bytes()
     dtbo = args.dtbo.read_bytes()
-    if not args.preserve_vendor_boot and not args.allow_unsigned_vendor_boot \
+    if not args.preserve_stock_avb and not args.preserve_vendor_boot \
+            and not args.allow_unsigned_vendor_boot \
             and not args.vendor_avb_key:
         parser.error(
             "replacing vendor_boot removes its AVB footer; use "
             "--preserve-vendor-boot, --vendor-avb-key, or explicitly pass "
             "--allow-unsigned-vendor-boot"
         )
+    if args.preserve_stock_avb and not args.magiskboot:
+        parser.error("--magiskboot is required with --preserve-stock-avb")
     if args.dtbo_index is not None:
         checker = Path(__file__).with_name("check_dtbo_refs.py")
         subprocess.run([
             sys.executable, str(checker), "--dtb", str(args.dtb),
             "--stock-dtbo", str(args.dtbo), "--index", str(args.dtbo_index),
         ], check=True)
-    boot, cmdline = build_boot(args.mkbootimg, boot_base, kernel, ramdisk,
-                               args.cmdline, args.output_dir / "boot.img")
-    if args.boot_avb_key:
+    if args.preserve_stock_avb:
+        boot = repack_with_magiskboot(
+            args.magiskboot, boot_base, kernel, ramdisk, dtb,
+            args.output_dir / "boot.img", vendor=False,
+        )
+        vendor = repack_with_magiskboot(
+            args.magiskboot, vendor_base, kernel, ramdisk, dtb,
+            args.output_dir / "vendor_boot.img", vendor=True,
+        )
+        cmdline = args.cmdline
+    else:
+        boot, cmdline = build_boot(args.mkbootimg, boot_base, kernel, ramdisk,
+                                   args.cmdline, args.output_dir / "boot.img")
+        vendor = vendor_base if args.preserve_vendor_boot else build_vendor(vendor_base, dtb)
+    if args.boot_avb_key and not args.preserve_stock_avb:
         if not args.avbtool:
             parser.error("--avbtool is required with --boot-avb-key")
         boot = add_avb_footer(args.avbtool, boot, "boot", len(boot_base),
                               args.boot_avb_key, args.boot_avb_algorithm)
-    vendor = vendor_base if args.preserve_vendor_boot else build_vendor(vendor_base, dtb)
-    if args.vendor_avb_key:
+    if args.vendor_avb_key and not args.preserve_stock_avb:
         if not args.avbtool:
             parser.error("--avbtool is required with --vendor-avb-key")
         if args.preserve_vendor_boot:
@@ -262,11 +312,15 @@ def main():
         "kernel_release": args.kernel_release,
         "dtbo_index_checked": args.dtbo_index,
         "vendor_boot_mode": (
+            "stock-header-footer" if args.preserve_stock_avb else
             "preserved-base" if args.preserve_vendor_boot else
             "replacement-with-avb-footer" if args.vendor_avb_key else
             "replacement-unsigned"),
-        "boot_avb_mode": "footer-with-supplied-key" if args.boot_avb_key else "none",
+        "boot_avb_mode": (
+            "stock-footer-preserved" if args.preserve_stock_avb else
+            "footer-with-supplied-key" if args.boot_avb_key else "none"),
         "vendor_boot_avb_mode": (
+            "stock-footer-preserved" if args.preserve_stock_avb else
             "footer-with-supplied-key" if args.vendor_avb_key else
             "base-footer-preserved" if args.preserve_vendor_boot else
             "none"),
@@ -283,7 +337,9 @@ def main():
                    "base_boot": str(args.base_boot),
                    "base_vendor_boot": str(args.base_vendor_boot)},
         "preserved": ["vendor ramdisk", "vendor ramdisk table", "vendor bootconfig", "DTB load address", "dtbo input untouched"],
-        "signing": ("base vendor_boot AVB footer preserved; boot footer made with supplied key"
+        "signing": ("stock boot and vendor_boot AVB footers preserved byte-for-byte"
+                    if args.preserve_stock_avb else
+                    "base vendor_boot AVB footer preserved; boot footer made with supplied key"
                     if args.preserve_vendor_boot and args.boot_avb_key else
                     "boot and replacement vendor_boot footers made with supplied key"
                     if args.boot_avb_key and args.vendor_avb_key else
