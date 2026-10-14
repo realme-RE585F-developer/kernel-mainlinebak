@@ -145,6 +145,21 @@ def copy_payload(source, destination):
         shutil.copyfile(source, destination)
 
 
+def add_avb_footer(avbtool, image, partition_name, partition_size, key,
+                   algorithm):
+    """Add a structurally valid hash footer using an explicitly supplied key."""
+    with tempfile.TemporaryDirectory(prefix="mainline-avb-") as temp_name:
+        path = Path(temp_name) / f"{partition_name}.img"
+        path.write_bytes(image)
+        subprocess.run([
+            str(avbtool), "add_hash_footer", "--image", str(path),
+            "--partition_name", partition_name,
+            "--partition_size", str(partition_size),
+            "--algorithm", algorithm, "--key", str(key),
+        ], check=True)
+        return path.read_bytes()
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--mkbootimg", type=Path, required=True)
@@ -164,6 +179,11 @@ def main():
         "--preserve-vendor-boot", action="store_true",
         help="copy the signed base vendor_boot unchanged instead of replacing its DTB",
     )
+    parser.add_argument("--avbtool", type=Path,
+                        help="avbtool used when --boot-avb-key is supplied")
+    parser.add_argument("--boot-avb-key", type=Path,
+                        help="private key for a test/OEM boot AVB footer")
+    parser.add_argument("--boot-avb-algorithm", default="SHA256_RSA4096")
     project_root = Path(__file__).resolve().parents[3]
     parser.add_argument(
         "--output-dir", type=Path, default=project_root / "test",
@@ -188,6 +208,11 @@ def main():
         ], check=True)
     boot, cmdline = build_boot(args.mkbootimg, boot_base, kernel, ramdisk,
                                args.cmdline, args.output_dir / "boot.img")
+    if args.boot_avb_key:
+        if not args.avbtool:
+            parser.error("--avbtool is required with --boot-avb-key")
+        boot = add_avb_footer(args.avbtool, boot, "boot", len(boot_base),
+                              args.boot_avb_key, args.boot_avb_algorithm)
     vendor = vendor_base if args.preserve_vendor_boot else build_vendor(vendor_base, dtb)
     args.output_dir.mkdir(parents=True, exist_ok=True)
     for old_image in args.output_dir.glob("*.img"):
@@ -212,6 +237,7 @@ def main():
         "kernel_release": args.kernel_release,
         "dtbo_index_checked": args.dtbo_index,
         "vendor_boot_mode": "stock-signed" if args.preserve_vendor_boot else "replacement-unsigned",
+        "boot_avb_mode": "footer-with-supplied-key" if args.boot_avb_key else "none",
         "partition_bytes": {"boot": len(boot), "vendor_boot": len(vendor)},
         "payload_sha256": {
             "kernel": sha256(kernel), "boot_ramdisk": sha256(ramdisk),
@@ -225,7 +251,9 @@ def main():
                    "base_boot": str(args.base_boot),
                    "base_vendor_boot": str(args.base_vendor_boot)},
         "preserved": ["vendor ramdisk", "vendor ramdisk table", "vendor bootconfig", "DTB load address", "dtbo input untouched"],
-        "signing": ("stock AVB footer preserved byte-for-byte"
+        "signing": ("stock vendor_boot AVB footer preserved; boot footer made with supplied key"
+                    if args.preserve_vendor_boot and args.boot_avb_key else
+                    "stock AVB footer preserved byte-for-byte"
                     if args.preserve_vendor_boot else
                     "unsigned; AVB footer not generated"),
         "validation": "v4 headers, payload sections, partition sizes and DTB FDT header checked",

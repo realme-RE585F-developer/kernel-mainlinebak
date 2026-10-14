@@ -224,7 +224,9 @@ package preserves the signed stock ``vendor_boot_a.img`` byte-for-byte and
 keeps the complete FDT beside the image for comparison. This isolates kernel
 failures from the AVB failure caused by replacing vendor_boot. A modified
 vendor_boot requires the OEM RSA private key, or a bootloader with verification
-disabled.
+disabled. The diagnostic ``boot.img`` also carries a structurally valid AVB
+hash footer made with a local test key; an unlocked bootloader may ignore its
+key identity while still requiring the footer to be present.
 
 ``fastboot continue`` after the failed experiment disconnected USB and
 led to black screen/restarts. On re-entering fastboot, slot A was marked
