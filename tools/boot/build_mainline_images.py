@@ -3,9 +3,11 @@
 
 The phone uses the standard Android v4 split layout: boot.img contains the
 kernel and generic ramdisk, while vendor_boot.img contains the vendor ramdisk,
-ramdisk table, bootconfig, and DTB.  This tool keeps those sections from the
+ramdisk table, bootconfig, and DTB. This tool keeps those sections from the
 stock images and replaces only the requested kernel, generic ramdisk, and DTB.
-It never modifies the input images and emits unsigned, partition-sized images.
+It can also preserve the stock signed vendor_boot byte-for-byte; changing its
+DTB invalidates the OEM AVB signature and cannot be repaired without the OEM
+private key.
 """
 
 import argparse
@@ -158,6 +160,10 @@ def main():
         "--dtbo-index", type=int, default=None,
         help="check this stock DTBO entry's external references before publishing",
     )
+    parser.add_argument(
+        "--preserve-vendor-boot", action="store_true",
+        help="copy the signed base vendor_boot unchanged instead of replacing its DTB",
+    )
     project_root = Path(__file__).resolve().parents[3]
     parser.add_argument(
         "--output-dir", type=Path, default=project_root / "test",
@@ -182,7 +188,7 @@ def main():
         ], check=True)
     boot, cmdline = build_boot(args.mkbootimg, boot_base, kernel, ramdisk,
                                args.cmdline, args.output_dir / "boot.img")
-    vendor = build_vendor(vendor_base, dtb)
+    vendor = vendor_base if args.preserve_vendor_boot else build_vendor(vendor_base, dtb)
     args.output_dir.mkdir(parents=True, exist_ok=True)
     for old_image in args.output_dir.glob("*.img"):
         old_image.unlink()
@@ -205,6 +211,7 @@ def main():
         "cmdline": cmdline,
         "kernel_release": args.kernel_release,
         "dtbo_index_checked": args.dtbo_index,
+        "vendor_boot_mode": "stock-signed" if args.preserve_vendor_boot else "replacement-unsigned",
         "partition_bytes": {"boot": len(boot), "vendor_boot": len(vendor)},
         "payload_sha256": {
             "kernel": sha256(kernel), "boot_ramdisk": sha256(ramdisk),
@@ -218,7 +225,9 @@ def main():
                    "base_boot": str(args.base_boot),
                    "base_vendor_boot": str(args.base_vendor_boot)},
         "preserved": ["vendor ramdisk", "vendor ramdisk table", "vendor bootconfig", "DTB load address", "dtbo input untouched"],
-        "signing": "unsigned; AVB footer not generated",
+        "signing": ("stock AVB footer preserved byte-for-byte"
+                    if args.preserve_vendor_boot else
+                    "unsigned; AVB footer not generated"),
         "validation": "v4 headers, payload sections, partition sizes and DTB FDT header checked",
     }
     manifest_path = args.output_dir / "manifest.json"

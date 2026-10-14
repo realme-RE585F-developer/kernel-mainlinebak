@@ -219,10 +219,12 @@ base and an experimental mainline base with 129 disabled target nodes.
 The latter preserved mainline model, memory and /soc nodes and produced
 a 1511093-byte DTB. A temporary boot of that experiment still stayed at
 the OEM logo and remained accessible via fastboot. Thus resolving overlay
-references alone does not fix the handoff. The current diagnostic package
-uses ``prebulit/fdt`` as its vendor_boot DTB and keeps the stock DTBO
-unchanged, so it tests the mainline Image against the complete firmware
-tree. Its manifest records the DTB size and reference-check result.
+references alone does not fix the handoff. The current fastboot diagnostic
+package preserves the signed stock ``vendor_boot_a.img`` byte-for-byte and
+keeps the complete FDT beside the image for comparison. This isolates kernel
+failures from the AVB failure caused by replacing vendor_boot. A modified
+vendor_boot requires the OEM RSA private key, or a bootloader with verification
+disabled.
 
 ``fastboot continue`` after the failed experiment disconnected USB and
 led to black screen/restarts. On re-entering fastboot, slot A was marked
