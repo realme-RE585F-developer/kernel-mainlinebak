@@ -4,17 +4,18 @@ SM7475 GT Neo5 SE early boot diagnosis
 Current Android v4 image set
 ----------------------------
 
-The current package is ``artifacts/sm7475-linux-7.2.8/mainline-v4``. It
-follows the stock split layout: ``boot.img`` contains the kernel and generic
-ramdisk, while ``vendor_boot.img`` contains the vendor ramdisk, ramdisk
-table, bootconfig and replacement mainline DTB. The package's ``dtbo.img``
-is an unchanged stock copy. The two v4 images form one matched set; testing
-only ``boot.img`` with ``fastboot boot`` leaves the installed ``vendor_boot``
-and DTBO in use and does not test the packaged mainline DTB.
+The current package is ``test/`` in the project root. It follows the stock
+split layout: ``boot.img`` contains the kernel and generic ramdisk, while
+``vendor_boot.img`` contains the unchanged vendor ramdisk, ramdisk table,
+bootconfig and DTB from the previously working test package. The package's
+``dtbo.img`` is an unchanged stock copy. The two v4 images form one matched
+set; testing only ``boot.img`` with ``fastboot boot`` leaves the installed
+``vendor_boot`` and DTBO in use.
 
-The diagnostic images are repacked with ``magiskboot`` so the stock v4
-headers, AVB footer and vendor public-key chain remain present while the
-kernel, ramdisk and DTB are replaced. Rebuilding a footer with a local test
+The current diagnostic ``boot.img`` is repacked with ``magiskboot`` so its
+stock v4 header and AVB footer remain present while only the kernel and
+generic ramdisk are replaced. ``vendor_boot.img`` is copied byte-for-byte.
+Rebuilding a footer with a local test
 key changes the chained key and can make ABL return ``Not Found`` even on an
 unlocked device. The stock footer's payload digest is retained for this
 unlocked diagnostic path; do not use this method for a locked production
@@ -60,6 +61,11 @@ The diagnostic fragment is
 Merge it with arm64 defconfig or the previously built configuration and run
 olddefconfig before building Image and the board DTB. Build from a source
 path without spaces; Kbuild does not support spaces in the source path.
+
+The early-boot profile disables KASLR, the Qualcomm watchdog, SMMU, RPMh,
+SMEM, hardware CPU frequency control and automatic oops panics. These blocks
+are left out while the vendor boot handoff is being isolated; GENI console,
+simplefb, pstore, UFS and USB diagnostics remain built in.
 
 The current test keeps the vendor ramdisk/table/bootconfig layout and puts the
 mainline DTB in the standard Android v4 DTB section of ``vendor_boot.img``.
