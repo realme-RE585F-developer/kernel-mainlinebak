@@ -179,6 +179,10 @@ def main():
         "--preserve-vendor-boot", action="store_true",
         help="copy the base vendor_boot unchanged instead of replacing its DTB",
     )
+    parser.add_argument(
+        "--allow-unsigned-vendor-boot", action="store_true",
+        help="explicitly allow a replacement vendor_boot without an AVB footer",
+    )
     parser.add_argument("--avbtool", type=Path,
                         help="avbtool used when --boot-avb-key is supplied")
     parser.add_argument("--boot-avb-key", type=Path,
@@ -200,6 +204,11 @@ def main():
     ramdisk = args.ramdisk.read_bytes()
     dtb = args.dtb.read_bytes()
     dtbo = args.dtbo.read_bytes()
+    if not args.preserve_vendor_boot and not args.allow_unsigned_vendor_boot:
+        parser.error(
+            "replacing vendor_boot removes its AVB footer; use "
+            "--preserve-vendor-boot or explicitly pass --allow-unsigned-vendor-boot"
+        )
     if args.dtbo_index is not None:
         checker = Path(__file__).with_name("check_dtbo_refs.py")
         subprocess.run([
