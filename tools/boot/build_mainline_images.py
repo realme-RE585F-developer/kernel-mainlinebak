@@ -95,6 +95,10 @@ def build_boot(mkbootimg, base_boot, kernel, ramdisk, cmdline, output):
     _, _, os_value, base_cmdline = stock_boot_layout(base_boot)
     if not cmdline:
         cmdline = base_cmdline
+    if not cmdline:
+        raise ValueError(
+            "base v4 boot.img has no kernel cmdline; pass --cmdline explicitly"
+        )
     os_version = os_value >> 11
     os_version = f"{os_version >> 14}.{(os_version >> 7) & 127}.{os_version & 127}"
     patch = os_value & 2047
@@ -126,7 +130,7 @@ def build_vendor(base_vendor, dtb):
     result = bytes(header) + padded(ramdisk) + padded(dtb) + padded(table) + padded(bootconfig)
     if len(result) > len(base_vendor):
         raise ValueError("replacement vendor_boot exceeds the input partition")
-    return result + b"\0" * (len(base_vendor) - len(result))
+    return result
 
 
 def publish(data, output, partition_size):
@@ -187,6 +191,8 @@ def main():
                         help="avbtool used when --boot-avb-key is supplied")
     parser.add_argument("--boot-avb-key", type=Path,
                         help="private key for a test/OEM boot AVB footer")
+    parser.add_argument("--vendor-avb-key", type=Path,
+                        help="private key for a replacement vendor_boot AVB footer")
     parser.add_argument("--boot-avb-algorithm", default="SHA256_RSA4096")
     project_root = Path(__file__).resolve().parents[3]
     parser.add_argument(
@@ -204,10 +210,12 @@ def main():
     ramdisk = args.ramdisk.read_bytes()
     dtb = args.dtb.read_bytes()
     dtbo = args.dtbo.read_bytes()
-    if not args.preserve_vendor_boot and not args.allow_unsigned_vendor_boot:
+    if not args.preserve_vendor_boot and not args.allow_unsigned_vendor_boot \
+            and not args.vendor_avb_key:
         parser.error(
             "replacing vendor_boot removes its AVB footer; use "
-            "--preserve-vendor-boot or explicitly pass --allow-unsigned-vendor-boot"
+            "--preserve-vendor-boot, --vendor-avb-key, or explicitly pass "
+            "--allow-unsigned-vendor-boot"
         )
     if args.dtbo_index is not None:
         checker = Path(__file__).with_name("check_dtbo_refs.py")
@@ -223,6 +231,14 @@ def main():
         boot = add_avb_footer(args.avbtool, boot, "boot", len(boot_base),
                               args.boot_avb_key, args.boot_avb_algorithm)
     vendor = vendor_base if args.preserve_vendor_boot else build_vendor(vendor_base, dtb)
+    if args.vendor_avb_key:
+        if not args.avbtool:
+            parser.error("--avbtool is required with --vendor-avb-key")
+        if args.preserve_vendor_boot:
+            parser.error("--vendor-avb-key cannot be used with --preserve-vendor-boot")
+        vendor = add_avb_footer(args.avbtool, vendor, "vendor_boot",
+                                len(vendor_base), args.vendor_avb_key,
+                                args.boot_avb_algorithm)
     args.output_dir.mkdir(parents=True, exist_ok=True)
     for old_image in args.output_dir.glob("*.img"):
         old_image.unlink()
@@ -245,8 +261,15 @@ def main():
         "cmdline": cmdline,
         "kernel_release": args.kernel_release,
         "dtbo_index_checked": args.dtbo_index,
-        "vendor_boot_mode": "preserved-base" if args.preserve_vendor_boot else "replacement-unsigned",
+        "vendor_boot_mode": (
+            "preserved-base" if args.preserve_vendor_boot else
+            "replacement-with-avb-footer" if args.vendor_avb_key else
+            "replacement-unsigned"),
         "boot_avb_mode": "footer-with-supplied-key" if args.boot_avb_key else "none",
+        "vendor_boot_avb_mode": (
+            "footer-with-supplied-key" if args.vendor_avb_key else
+            "base-footer-preserved" if args.preserve_vendor_boot else
+            "none"),
         "partition_bytes": {"boot": len(boot), "vendor_boot": len(vendor)},
         "payload_sha256": {
             "kernel": sha256(kernel), "boot_ramdisk": sha256(ramdisk),
@@ -262,8 +285,12 @@ def main():
         "preserved": ["vendor ramdisk", "vendor ramdisk table", "vendor bootconfig", "DTB load address", "dtbo input untouched"],
         "signing": ("base vendor_boot AVB footer preserved; boot footer made with supplied key"
                     if args.preserve_vendor_boot and args.boot_avb_key else
+                    "boot and replacement vendor_boot footers made with supplied key"
+                    if args.boot_avb_key and args.vendor_avb_key else
                     "boot footer made with supplied key; replacement vendor_boot has no AVB footer"
                     if args.boot_avb_key else
+                    "replacement vendor_boot footer made with supplied key"
+                    if args.vendor_avb_key else
                     "base vendor_boot AVB footer preserved byte-for-byte"
                     if args.preserve_vendor_boot else
                     "unsigned; AVB footer not generated"),

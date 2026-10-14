@@ -12,13 +12,11 @@ is an unchanged stock copy. The two v4 images form one matched set; testing
 only ``boot.img`` with ``fastboot boot`` leaves the installed ``vendor_boot``
 and DTBO in use and does not test the packaged mainline DTB.
 
-The generated images are unsigned and intentionally have no AVB footer. The
-stock bootloader verifies the ``boot`` and ``vendor_boot`` chain through the
-RSA-4096 descriptors in ``vbmeta``; it will reject these images with
-``Failed to load/authenticate boot image: Load Error``. A copied stock footer
-cannot be reused after changing the payload because the signed digest no
-longer matches. Do not flash or temporarily boot the generated images on a
-production device.
+The generated images carry structurally valid AVB hash footers made with the
+local Android test RSA-4096 key. They are not vendor-signed images. A copied
+stock footer cannot be reused after changing the payload because the signed
+digest no longer matches. The bootloader still needs a complete v4 image
+structure, even when the device is unlocked.
 
 For local testing, ``tools/boot/build_mainline_images.py`` writes to the
 project-level ``test/`` directory by default. Before publishing a successful
@@ -61,12 +59,13 @@ Merge it with arm64 defconfig or the previously built configuration and run
 olddefconfig before building Image and the board DTB. Build from a source
 path without spaces; Kbuild does not support spaces in the source path.
 
-The current test keeps the official ``vendor_boot`` and puts the mainline
-DTB in the standard Android boot header v2 DTB section of ``boot.img``.
+The current test keeps the vendor ramdisk/table/bootconfig layout and puts the
+mainline DTB in the standard Android v4 DTB section of ``vendor_boot.img``.
+The ``build_boot_dtb.py`` path below is historical v2 diagnostics only.
 ``tools/boot/build_boot_dtb.py`` extracts the kernel and ramdisk from the v4
 test boot image, then uses AOSP ``mkbootimg.py`` to write the v2 header,
 kernel, ramdisk, and DTB sections. It does not read or modify ``vendor_boot``.
-The output is unsigned and has no AVB footer.
+The historical v2 output is unsigned and has no AVB footer.
 
 After building the board DTB, run:
 
