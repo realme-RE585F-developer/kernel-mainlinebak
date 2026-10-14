@@ -1,6 +1,46 @@
 SM7475 GT Neo5 SE early boot diagnosis
 =====================================
 
+Current Android v4 image set
+----------------------------
+
+The current package is ``artifacts/sm7475-linux-7.2.8/mainline-v4``. It
+follows the stock split layout: ``boot.img`` contains the kernel and generic
+ramdisk, while ``vendor_boot.img`` contains the vendor ramdisk, ramdisk
+table, bootconfig and replacement mainline DTB. The package's ``dtbo.img``
+is an unchanged stock copy. The two v4 images form one matched set; testing
+only ``boot.img`` with ``fastboot boot`` leaves the installed ``vendor_boot``
+and DTBO in use and does not test the packaged mainline DTB.
+
+Standard fastboot ``boot`` accepts one boot image and cannot stage a separate
+v4 ``vendor_boot`` image. Therefore a temporary ``fastboot boot boot.img``
+result is inconclusive for this package. Testing the matched pair requires
+the bootloader to load both images from their partitions. Do not flash either
+partition until a full stock recovery image pair is available and a recovery
+path is confirmed. A bootloader message such as ``Status read failed (No such
+device)`` only indicates that USB disconnected during the handoff; it does
+not reveal whether Linux was entered or why the phone reset.
+
+The stock DTBO is not yet known to be compatible with the mainline DTB. ABL
+was observed selecting stock DTBO entry 0, whose 129 external references are
+absent from the mainline base DTB. Thus matching the v4 image pair is
+necessary to test the package but is not sufficient to make it boot.
+
+If a failed boot leaves the phone in fastboot, first inspect the current and
+unbootable slot variables. The previously working system was recovered by
+reselecting its original slot; do not use ``fastboot continue`` as a recovery
+step. Never guess the original slot or overwrite a slot without its stock
+images:
+
+.. code-block:: sh
+
+   fastboot getvar current-slot
+   fastboot getvar slot-unbootable:a
+   fastboot getvar slot-unbootable:b
+
+The earlier v2 ``fastboot boot`` experiments below are historical diagnostics
+and do not test the current v4 package.
+
 The diagnostic fragment is
 ``arch/arm64/configs/fragments/sm7475-mainline-diagnostic.config``.
 Merge it with arm64 defconfig or the previously built configuration and run

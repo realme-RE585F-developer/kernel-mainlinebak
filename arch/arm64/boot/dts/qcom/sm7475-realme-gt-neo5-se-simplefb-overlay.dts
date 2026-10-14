@@ -1,0 +1,18 @@
+// SPDX-License-Identifier: GPL-2.0-only
+
+/dts-v1/;
+/plugin/;
+
+/* Keep the complete vendor DTB and expose only the bootloader scanout buffer. */
+&{/chosen} {
+	#address-cells = <2>;
+	#size-cells = <2>;
+	framebuffer@b8000000 {
+		compatible = "simple-framebuffer";
+		reg = <0x0 0xb8000000 0x0 0x2b00000>;
+		width = <1240>;
+		height = <2772>;
+		stride = <(1240 * 4)>;
+		format = "a8r8g8b8";
+	};
+};
