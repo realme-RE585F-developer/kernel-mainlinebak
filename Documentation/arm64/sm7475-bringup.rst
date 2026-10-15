@@ -6,19 +6,21 @@ Current Android v4 image set
 
 The current package is ``test/`` in the project root. It follows the stock
 split layout: ``boot.img`` contains the kernel and generic ramdisk, while
-``vendor_boot.img`` contains the unchanged vendor ramdisk, ramdisk table,
-bootconfig and DTB from the previously working test package. The package's
-``dtbo.img`` is an unchanged stock copy. The two v4 images form one matched
-set; testing only ``boot.img`` with ``fastboot boot`` leaves the installed
-``vendor_boot`` and DTBO in use.
+``vendor_boot.img`` contains the vendor ramdisk, ramdisk table and bootconfig
+from the previously working 6.18 package, with the 7.2.8 mainline DTB in the
+standard v4 DTB section. The package's ``dtbo.img`` is an unchanged stock
+copy. The two v4 images form one matched set; testing only ``boot.img`` with
+``fastboot boot`` leaves the installed ``vendor_boot`` and DTBO in use.
 
-The current diagnostic ``boot.img`` is built with AOSP ``mkbootimg.py`` and
-has no AVB footer. This is intentional for ``fastboot boot`` on an unlocked
-device: retaining the stock footer after replacing the kernel leaves the
-signed hash descriptor pointing at the stock payload, which makes ABL return
-``Failed to load/authenticate boot image: Not Found``. ``vendor_boot.img`` is
-copied byte-for-byte from the working test package and retains its stock
-footer. A locally generated footer is not a production signature.
+The current diagnostic images are built with AOSP ``mkbootimg.py`` and each
+gets a fresh AVB hash footer from the explicitly supplied RSA-4096 test key.
+The descriptor therefore covers the actual replacement payload instead of
+claiming the stock hash. The test key is not the OEM key (the OEM private key
+is not present in this source tree), so this is suitable only for an unlocked
+device whose ABL accepts an unlocked/test key. A locked production device
+requires the OEM signing key. Reusing a stock footer after changing a payload
+is invalid and can make ABL return ``Failed to load/authenticate boot image:
+Not Found``.
 
 For local testing, ``tools/boot/build_mainline_images.py`` writes to the
 project-level ``test/`` directory by default. Before publishing a successful
@@ -68,6 +70,10 @@ simplefb, pstore, UFS and USB diagnostics remain built in.
 
 The current test keeps the vendor ramdisk/table/bootconfig layout and puts the
 mainline DTB in the standard Android v4 DTB section of ``vendor_boot.img``.
+Both ``boot.img`` and ``vendor_boot.img`` are padded to their stock 192 MiB
+partition size after their footer is generated. The builder refuses to make
+an unsigned replacement unless ``--allow-unsigned-boot`` or
+``--allow-unsigned-vendor-boot`` is explicitly passed.
 The ``build_boot_dtb.py`` path below is historical v2 diagnostics only.
 ``tools/boot/build_boot_dtb.py`` extracts the kernel and ramdisk from the v4
 test boot image, then uses AOSP ``mkbootimg.py`` to write the v2 header,

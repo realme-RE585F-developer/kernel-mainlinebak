@@ -214,6 +214,10 @@ def main():
         "--allow-unsigned-vendor-boot", action="store_true",
         help="explicitly allow a replacement vendor_boot without an AVB footer",
     )
+    parser.add_argument(
+        "--allow-unsigned-boot", action="store_true",
+        help="explicitly allow a replacement boot.img without an AVB footer",
+    )
     parser.add_argument("--avbtool", type=Path,
                         help="avbtool used when --boot-avb-key is supplied")
     parser.add_argument("--boot-avb-key", type=Path,
@@ -251,6 +255,12 @@ def main():
     dtbo = args.dtbo.read_bytes()
     if args.preserve_stock_avb and args.preserve_stock_boot_avb:
         parser.error("--preserve-stock-avb and --preserve-stock-boot-avb are mutually exclusive")
+    if not args.preserve_stock_avb and not args.preserve_stock_boot_avb \
+            and not args.boot_avb_key and not args.allow_unsigned_boot:
+        parser.error(
+            "replacing boot.img removes its AVB footer; use --boot-avb-key "
+            "or explicitly pass --allow-unsigned-boot"
+        )
     if not args.preserve_stock_avb and not args.preserve_stock_boot_avb \
             and not args.preserve_vendor_boot \
             and not args.allow_unsigned_vendor_boot \
@@ -333,7 +343,8 @@ def main():
         "boot_avb_mode": (
             "stock-footer-preserved" if args.preserve_stock_avb else
             "stock-footer-preserved" if args.preserve_stock_boot_avb else
-            "footer-with-supplied-key" if args.boot_avb_key else "none"),
+            "footer-with-supplied-key" if args.boot_avb_key else
+            "unsigned-explicit" if args.allow_unsigned_boot else "none"),
         "vendor_boot_avb_mode": (
             "stock-footer-preserved" if args.preserve_stock_avb else
             "base-footer-preserved" if args.preserve_stock_boot_avb else
@@ -367,6 +378,8 @@ def main():
                     if args.vendor_avb_key else
                     "base vendor_boot AVB footer preserved byte-for-byte"
                     if args.preserve_vendor_boot else
+                    "boot unsigned explicitly requested; AVB footer not generated"
+                    if args.allow_unsigned_boot else
                     "unsigned; AVB footer not generated"),
         "validation": "v4 headers, payload sections, partition sizes and DTB FDT header checked",
     }
